@@ -9,6 +9,8 @@ import terminal
 import threadpool
 import strutils
 import events
+import times
+import os
 
 {.experimental.}
 
@@ -43,24 +45,38 @@ proc eval(n:NimNode):NimNode{.compileTime.} =
         leftv = evalChilds[1]
         rightv = evalChilds[2]
     result = newCall(newIdentNode("format"),newStrLitNode(tmp),n.toStrLit,leftv,rightv)
-        # tmp format [ leftv,op,rightv ]
 
 proc fails(n:NimNode):NimNode{.compileTime.} =
     let indentLevel = max(getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1,1)
     let flag = newStrLitNode("✘  ".indent( indentLevel * indentSpaceNum ))
     result = newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("fgRed"),flag,newIdentNode("resetStyle"),eval(n))
 
-proc pass(n:NimNode):NimNode{.compileTime.} =
+proc pass(n,beginTime:NimNode):NimNode{.compileTime.} =
+    result = newNimNode(nnkStmtList)
     let indentLevel = max(getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1,1)
     let flag = newStrLitNode("✓  ".indent(indentLevel * indentSpaceNum))
-    result = newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("styleDim"),flag,newIdentNode("resetStyle"),n.toStrLit)
+    let tmp = "$# ⏱ :$#s"
+    let endTime = genSym(nskLet,"endTime")
+    let endTimeGen = newLetStmt(endTime,newCall("epochTime"))
+    result.add endTimeGen
+    # let duration = infix(endTime,"-",beginTime)
+    let durationCal = infix(endTime,"-",beginTime)
+    let duration = newCall(newIdentNode"formatFloat",durationCal,newIdentNode"ffDecimal",newIntLitNode(3))
+    let msg = newCall(newIdentNode("format"),newStrLitNode(tmp),n.toStrLit,duration)
+    result.add newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("styleDim"),flag,newIdentNode("resetStyle"),msg)
 
 proc ifelse(n:NimNode):NimNode{.compileTime.} =
     result = newNimNode(nnkStmtList,n)
     
     let indentLevel = getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1
+    let beginTime = genSym(nskLet,"beginTime")
+    let beginTimeGen = newLetStmt(beginTime,newCall("epochTime"))
+    result.add beginTimeGen
+    # var exp = newNimNode(nnkStmtList)
+    # exp.add beginTimeGen
+    # exp.add n
     result.add newIfStmt(
-        (n, pass(n)),
+        (n, pass(n,beginTime)),
       ).add(newNimNode(nnkElse).add(fails(n)))
 
 proc exceptionHandle(n:NimNode): NimNode =
@@ -91,12 +107,16 @@ macro expect*(n:untyped): untyped =
         of nnkCommand,nnkCall:
             if secondChilds[0].basename.strVal == "takes":
                 let process = newNimNode(nnkStmtList)
+                let beginTime = genSym(nskLet,"beginTime")
+                process.add newLetStmt(beginTime,newCall("epochTime"))
                 var call = newNimNode(nnkCall)
                 call.add first
                 for x in secondChilds[1..^1]:
                     call.add x
                 process.add call
-                process.add pass(n)
+                # let endTime = genSym(nskLet,"endTime")
+                # process.add newLetStmt(endTime,newCall("epochTime"))
+                process.add pass(n,beginTime)
                 tryStmt.add process
             else:
                 tryStmt.add ifelse(n)
@@ -119,7 +139,9 @@ macro expect*(n:untyped): untyped =
 when isMainModule:
     proc plus(a,b:int):int = a + b
     proc plusRaise(a,b:int):int = raise newException(ValueError,"")   
-    proc newEx(n:int) = discard  
+    proc newEx(n:int) = 
+        sleep(1000)
+        
     proc newExt(n,b:int) = raise newException(ValueError,"")      
     describe "test call":
         # parallel:
@@ -138,3 +160,9 @@ when isMainModule:
 
     describe "test complex comparsion":
         expect plus(1,2) == plus(1,2)
+        let 
+            a = 1
+            b = 2
+            c = 3
+            d = 4
+        expect plus(a,b) >= plus(c,d)
