@@ -26,7 +26,7 @@ const
 proc getIndentLevel(call:string,col:Natural):untyped {.compileTime.}=
     result = (col - call.len) div indentSpaceNum
 
-template describe(des:string,body:untyped):untyped =
+template describe*(des:string,body:untyped):untyped =
     let indentLevl = getIndentLevel("describe",instantiationInfo().column) - 1
     echo des.indent(indentLevl*indentSpaceNum)
     
@@ -66,7 +66,7 @@ proc exceptionHandle(n:NimNode): NimNode =
         msg.add " [$#]" % $ex.name
         styledWriteLine(stdout,fgRed,"✘  ".indent(`indentLevel` * indentSpaceNum ),resetStyle,msg )
 
-macro expect(n:untyped): untyped =
+macro expect*(n:untyped): untyped =
     let 
         childs = toSeq(n.children)
         childsLen = len(childs)
