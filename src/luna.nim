@@ -36,13 +36,22 @@ template describe*(des:string,body:untyped):untyped =
     block:
         body
 
+proc eval(n:NimNode):NimNode{.compileTime.} =
+    let tmp = "$# [$# and $#]"
+    let evalChilds = toSeq(n.children)
+    let 
+        leftv = evalChilds[1]
+        rightv = evalChilds[2]
+    result = newCall(newIdentNode("format"),newStrLitNode(tmp),n.toStrLit,leftv,rightv)
+        # tmp format [ leftv,op,rightv ]
+
 proc fails(n:NimNode):NimNode{.compileTime.} =
-    let indentLevel = getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1
+    let indentLevel = max(getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1,1)
     let flag = newStrLitNode("✘  ".indent( indentLevel * indentSpaceNum ))
-    result = newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("fgRed"),flag,newIdentNode("resetStyle"),n.toStrLit)
+    result = newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("fgRed"),flag,newIdentNode("resetStyle"),eval(n))
 
 proc pass(n:NimNode):NimNode{.compileTime.} =
-    let indentLevel = getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1
+    let indentLevel = max(getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1,1)
     let flag = newStrLitNode("✓  ".indent(indentLevel * indentSpaceNum))
     result = newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("styleDim"),flag,newIdentNode("resetStyle"),n.toStrLit)
 
@@ -126,3 +135,6 @@ when isMainModule:
     describe "test takes and exception":
         expect newEx takes 1
         expect newExt takes(1,2)
+
+    describe "test complex comparsion":
+        expect plus(1,2) == plus(1,2)
