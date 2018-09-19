@@ -72,9 +72,6 @@ proc ifelse(n:NimNode):NimNode{.compileTime.} =
     let beginTime = genSym(nskLet,"beginTime")
     let beginTimeGen = newLetStmt(beginTime,newCall("epochTime"))
     result.add beginTimeGen
-    # var exp = newNimNode(nnkStmtList)
-    # exp.add beginTimeGen
-    # exp.add n
     result.add newIfStmt(
         (n, pass(n,beginTime)),
       ).add(newNimNode(nnkElse).add(fails(n)))
@@ -88,7 +85,7 @@ proc exceptionHandle(n:NimNode): NimNode =
         let stacks = getStackTraceEntries(ex)
         let last = stacks[^1]
         msg.add last.procname
-        msg.add " [$#]" % $ex.name
+        msg.add " [\x1B[0;31m$#\x1B[0m]" % $ex.name
         styledWriteLine(stdout,fgRed,"✘  ".indent(`indentLevel` * indentSpaceNum ),resetStyle,msg )
 
 macro expect*(n:untyped): untyped =
