@@ -76,21 +76,25 @@ macro expect*(n:untyped): untyped =
     let
         second = childs[1]
         secondChilds = toSeq(second.children)
-
+    result = newNimNode(nnkStmtList,n)
+    let tryStmt = newNimNode(nnkTryStmt)
     case second.kind:
         of nnkCommand,nnkCall:
             if secondChilds[0].basename.strVal == "takes":
-                result = newNimNode(nnkTryStmt,n)
+                let process = newNimNode(nnkStmtList)
                 var call = newNimNode(nnkCall)
                 call.add first
                 for x in secondChilds[1..^1]:
                     call.add x
-                result.add call
-                result.add newNimNode(nnkExceptBranch).add(exceptionHandle(n))
+                process.add call
+                process.add pass(n)
+                tryStmt.add process
             else:
-                result = ifelse(n)
+                tryStmt.add ifelse(n)
         else:
-            result = ifelse(n)
+            tryStmt.add ifelse(n)
+    tryStmt.add newNimNode(nnkExceptBranch).add(exceptionHandle(n))
+    result.add tryStmt
 
     # var outputStream = newFileStream(stdout)
     # result = newNimNode(nnkStmtList,n)
@@ -105,7 +109,8 @@ macro expect*(n:untyped): untyped =
 
 when isMainModule:
     proc plus(a,b:int):int = a + b
-    proc newEx(n:int) = raise newException(ValueError,"")   
+    proc plusRaise(a,b:int):int = raise newException(ValueError,"")   
+    proc newEx(n:int) = discard  
     proc newExt(n,b:int) = raise newException(ValueError,"")      
     describe "test call":
         # parallel:
@@ -113,6 +118,7 @@ when isMainModule:
         #     spawn expect plus(1,2) == 4
         expect plus(1,2) == 3
         expect plus(1,2) == 4
+        expect plusRaise(1,2) == 4
 
         describe "test nested":
             expect plus(1,2) == 3
