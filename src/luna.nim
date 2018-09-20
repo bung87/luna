@@ -83,14 +83,16 @@ proc ifelse(n:NimNode):NimNode{.compileTime.} =
       ).add(newNimNode(nnkElse).add(fails(n)))
 
 proc exceptionHandle(n:NimNode): NimNode =
-    var indentLevel:int
-    indentLevel = max(getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1,1)
+    var 
+        indentLevel:int
+        exp = n.toStrLit.strVal
+    indentLevel = max(getIndentLevel(exp,lineInfoObj(n).column) - 1,1)
     result = quote do:
         var msg = ""
         let ex = getCurrentException()
         let stacks = getStackTraceEntries(ex)
         let last = stacks[^1]
-        msg.add last.procname
+        msg.add `exp`
         msg.add " [\x1B[0;31m$#\x1B[0m]" % $ex.name
         styledWriteLine(stdout,fgRed,"✘  ".indent(`indentLevel` * indentSpaceNum ),resetStyle,msg )
 
