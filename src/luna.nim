@@ -41,15 +41,20 @@ template describe*(des:string,body:untyped):untyped =
 proc eval(n:NimNode):NimNode{.compileTime.} =
     let tmp = "$# [$# and $#]"
     let evalChilds = toSeq(n.children)
-    let 
-        leftv = evalChilds[1]
-        rightv = evalChilds[2]
-    result = newCall(newIdentNode("format"),newStrLitNode(tmp),n.toStrLit,leftv,rightv)
+    if evalChilds.len == 3:
+        let 
+            leftv = evalChilds[1]
+            rightv = evalChilds[2]
+        result = newCall(newIdentNode("format"),newStrLitNode(tmp),n.toStrLit,leftv,rightv)
+    else:
+        result = n.toStrLit
 
 proc fails(n:NimNode):NimNode{.compileTime.} =
+    result = newNimNode(nnkStmtList)
     let indentLevel = max(getIndentLevel(n.toStrLit.strVal,lineInfoObj(n).column) - 1,1)
     let flag = newStrLitNode("✘  ".indent( indentLevel * indentSpaceNum ))
-    result = newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("fgRed"),flag,newIdentNode("resetStyle"),eval(n))
+    result.add newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("fgRed"),flag,newIdentNode("resetStyle"),eval(n))
+    result.add newNimNode(nnkReturnStmt).add newIdentNode("false")
 
 proc pass(n,beginTime:NimNode):NimNode{.compileTime.} =
     result = newNimNode(nnkStmtList)
@@ -64,6 +69,7 @@ proc pass(n,beginTime:NimNode):NimNode{.compileTime.} =
     let duration = newCall(newIdentNode"formatFloat",durationCal,newIdentNode"ffDecimal",newIntLitNode(3))
     let msg = newCall(newIdentNode("format"),newStrLitNode(tmp),n.toStrLit,duration)
     result.add newCall(newIdentNode"styledWriteLine",newIdentNode("stdout"),newIdentNode("styleDim"),flag,newIdentNode("resetStyle"),msg)
+    result.add newNimNode(nnkReturnStmt).add newIdentNode("true")
 
 proc ifelse(n:NimNode):NimNode{.compileTime.} =
     result = newNimNode(nnkStmtList,n)
@@ -98,7 +104,8 @@ macro expect*(n:untyped): untyped =
     let
         second = childs[1]
         secondChilds = toSeq(second.children)
-    result = newNimNode(nnkStmtList,n)
+    
+    var body = newNimNode(nnkStmtList,n)
     let tryStmt = newNimNode(nnkTryStmt)
     case second.kind:
         of nnkCommand,nnkCall:
@@ -120,7 +127,13 @@ macro expect*(n:untyped): untyped =
         else:
             tryStmt.add ifelse(n)
     tryStmt.add newNimNode(nnkExceptBranch).add(exceptionHandle(n))
-    result.add tryStmt
+    body.add tryStmt
+    body.add newNimNode(nnkReturnStmt).add newIdentNode("false")
+    let procname = genSym(nskProc)
+    var procs = newProc(procname,[newIdentNode("bool")],body)
+    procs.addPragma newIdentNode("discardable")
+    procs.addPragma newIdentNode("closure")
+    result = newBlockStmt( newStmtList(procs,newCall(procname)) )
 
     # var outputStream = newFileStream(stdout)
     # result = newNimNode(nnkStmtList,n)
@@ -134,6 +147,7 @@ macro expect*(n:untyped): untyped =
     # outputStream.write()
 
 when isMainModule:
+    proc plusOne(a:int):int = a + 3
     proc plus(a,b:int):int = a + b
     proc plusRaise(a,b:int):int = raise newException(ValueError,"")   
     proc newEx(n:int) = 
@@ -141,9 +155,10 @@ when isMainModule:
         
     proc newExt(n,b:int) = raise newException(ValueError,"")      
     describe "test call":
+        # var ch = newSeq[bool](2)
         # parallel:
-        #     spawn expect plus(1,2) == 3
-        #     spawn expect plus(1,2) == 4
+        #     for k in 0..ch.high:
+        #         ch[k] = spawn expect plusOne(k) >= 3
         expect plus(1,2) == 3
         expect plus(1,2) == 4
         expect plusRaise(1,2) == 4
