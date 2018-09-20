@@ -117,11 +117,13 @@ macro expect*(n:untyped): untyped =
                 process.add newLetStmt(beginTime,newCall("epochTime"))
                 var call = newNimNode(nnkCall)
                 call.add first
+                var res = findChild(n, it.kind == nnkFormalParams)
                 for x in secondChilds[1..^1]:
                     call.add x
-                process.add call
-                # let endTime = genSym(nskLet,"endTime")
-                # process.add newLetStmt(endTime,newCall("epochTime"))
+                if res == nil:
+                    process.add  call
+                else:
+                    process.add newNimNode(nnkDiscardStmt).add call
                 process.add pass(n,beginTime)
                 tryStmt.add process
             else:
@@ -149,18 +151,24 @@ macro expect*(n:untyped): untyped =
     # outputStream.write()
 
 when isMainModule:
+    import math
     proc plusOne(a:int):int = a + 3
     proc plus(a,b:int):int = a + b
     proc plusRaise(a,b:int):int = raise newException(ValueError,"")   
-    proc newEx(n:int) = 
-        sleep(1000)
+    proc newEx(n:int){.discardable.} = 
+        sleep(100)
         
-    proc newExt(n,b:int) = raise newException(ValueError,"")      
+    proc newExt(n,b:int){.discardable.} = raise newException(ValueError,"")
+    proc term(k: float): float = 4 * math.pow(-1, k) / (2*k + 1)
+    proc pi(n: int): float =
+        var ch = newSeq[float](n+1)
+        parallel:
+          for k in 0..ch.high:
+            ch[k] = spawn term(float(k))
+        for k in 0..ch.high:
+          result += ch[k]
+
     describe "test call":
-        # var ch = newSeq[bool](2)
-        # parallel:
-        #     for k in 0..ch.high:
-        #         ch[k] = spawn expect plusOne(k) >= 3
         expect plus(1,2) == 3
         expect plus(1,2) == 4
         expect plusRaise(1,2) == 4
@@ -180,3 +188,4 @@ when isMainModule:
             c = 3
             d = 4
         expect plus(a,b) >= plus(c,d)
+        expect formatFloat(pi(5000)) == formatFloat(3.141792613595791)
