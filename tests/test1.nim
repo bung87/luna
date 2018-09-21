@@ -2,6 +2,9 @@ import math
 import luna
 import threadpool
 import strutils
+import times
+
+{.experimental.}
 
 proc plus(a,b:int):int = a + b
 proc term(k: float): float = 4 * math.pow(-1, k) / (2*k + 1)
