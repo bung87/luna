@@ -82,7 +82,7 @@ proc ifelse(n:NimNode):NimNode{.compileTime.} =
         (n, pass(n,beginTime)),
       ).add(newNimNode(nnkElse).add(fails(n)))
 
-proc exceptionHandle(n:NimNode): NimNode =
+proc exceptionHandle(n:NimNode): NimNode{.compileTime.} =
     var 
         indentLevel:int
         exp = n.toStrLit.strVal
@@ -96,6 +96,46 @@ proc exceptionHandle(n:NimNode): NimNode =
         msg.add " [\x1B[0;31m$#\x1B[0m]" % $ex.name
         styledWriteLine(stdout,fgRed,"✘  ".indent(`indentLevel` * indentSpaceNum ),resetStyle,msg )
 
+proc takesCall(n:NimNode):NimNode{.compileTime.} =
+    let 
+        childs = toSeq(n.children)
+        childsLen = len(childs)
+        first = childs[0]
+        firstChilds = toSeq(first.children)
+    
+    let process = newNimNode(nnkStmtList)
+    let beginTime = genSym(nskLet,"beginTime")
+    process.add newLetStmt(beginTime,newCall("epochTime"))
+    var res = findChild(n, it.kind == nnkFormalParams)
+    var call = newNimNode(nnkCall)
+    if childs.len > 1:
+        let
+            second = childs[1]
+            secondChilds = toSeq(second.children)
+        call.add first
+        for x in secondChilds[1..^1]:
+            call.add x
+        if res == nil:
+            process.add  call
+        else:
+            process.add newNimNode(nnkDiscardStmt).add call
+    else:
+        # case firstChilds[0].kind:
+        #     of nnkCommand,nnkCall:
+        if firstChilds[1][0].basename.strVal == "takes":
+            call.add firstChilds[0]
+            for x in firstChilds[1][1].children:
+                call.add x
+            if res == nil:
+                process.add  call
+            else:
+                process.add newNimNode(nnkDiscardStmt).add call
+            # else:
+            #     process.add  call
+
+    process.add pass(n,beginTime)
+    process
+
 macro expect*(n:untyped): untyped =
     let 
         childs = toSeq(n.children)
@@ -103,33 +143,25 @@ macro expect*(n:untyped): untyped =
         first = childs[0]
         firstChilds = toSeq(first.children)
 
-    let
-        second = childs[1]
-        secondChilds = toSeq(second.children)
-    
     var body = newNimNode(nnkStmtList,n)
     let tryStmt = newNimNode(nnkTryStmt)
-    case second.kind:
-        of nnkCommand,nnkCall:
-            if secondChilds[0].basename.strVal == "takes":
-                let process = newNimNode(nnkStmtList)
-                let beginTime = genSym(nskLet,"beginTime")
-                process.add newLetStmt(beginTime,newCall("epochTime"))
-                var call = newNimNode(nnkCall)
-                call.add first
-                var res = findChild(n, it.kind == nnkFormalParams)
-                for x in secondChilds[1..^1]:
-                    call.add x
-                if res == nil:
-                    process.add  call
+  
+    if childs.len > 1:
+        let
+            second = childs[1]
+            secondChilds = toSeq(second.children)
+        case second.kind:
+            of nnkCommand,nnkCall:
+                if secondChilds[0].basename.strVal == "takes":
+                    tryStmt.add takesCall(n)
                 else:
-                    process.add newNimNode(nnkDiscardStmt).add call
-                process.add pass(n,beginTime)
-                tryStmt.add process
+                    tryStmt.add ifelse(n)
             else:
                 tryStmt.add ifelse(n)
-        else:
-            tryStmt.add ifelse(n)
+    else:
+        discard
+        # tryStmt.add takesCall(n)
+        # tryStmt.add makeCall(n)
     tryStmt.add newNimNode(nnkExceptBranch).add(exceptionHandle(n))
     body.add tryStmt
     body.add newNimNode(nnkReturnStmt).add newIdentNode("false")
@@ -151,22 +183,13 @@ macro expect*(n:untyped): untyped =
     # outputStream.write()
 
 when isMainModule:
-    import math
-    proc plusOne(a:int):int = a + 3
+
     proc plus(a,b:int):int = a + b
     proc plusRaise(a,b:int):int = raise newException(ValueError,"")   
     proc newEx(n:int){.discardable.} = 
         sleep(100)
         
     proc newExt(n,b:int){.discardable.} = raise newException(ValueError,"")
-    proc term(k: float): float = 4 * math.pow(-1, k) / (2*k + 1)
-    proc pi(n: int): float =
-        var ch = newSeq[float](n+1)
-        parallel:
-          for k in 0..ch.high:
-            ch[k] = spawn term(float(k))
-        for k in 0..ch.high:
-          result += ch[k]
 
     describe "test call":
         expect plus(1,2) == 3
@@ -177,15 +200,7 @@ when isMainModule:
             expect plus(1,2) == 3
 
     describe "test takes and exception":
+        # dumpTree:
         expect newEx takes 1
         expect newExt takes(1,2)
-
-    describe "test complex comparsion":
-        expect plus(1,2) == plus(1,2)
-        let 
-            a = 1
-            b = 2
-            c = 3
-            d = 4
-        expect plus(a,b) >= plus(c,d)
-        expect formatFloat(pi(5000)) == formatFloat(3.141792613595791)
+        # expect newEx takes 1,2
